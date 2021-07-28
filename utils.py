@@ -2,7 +2,6 @@ import socket
 import struct
 import array
 import time
-import math
 
 ICMP_CODE = socket.getprotobyname('icmp')
 
@@ -13,10 +12,9 @@ CODE = 0
 IDENTIFIER = 0
 SEQUENCE_NUMBER = 0
 
-
-STRUCT_FORMAT = "!BBHHH"
-
 __BUFFER_SIZE__ = 1024
+
+HOTKEY = "ctrl + c"
 
 def create_raw_socket() -> socket.socket:
     try:
@@ -25,7 +23,6 @@ def create_raw_socket() -> socket.socket:
         return s
     except socket.error as e:
         print(f"error creating socket. Code: {str(e[0])}. message: {e[1]}")
-
 
 def checksum(packet: bytes) -> int:
     if len(packet) % 2 != 0:
@@ -54,6 +51,13 @@ def create_packet() -> bytes:
 
     return header
 
+def echo_statistics(*args, **kwargs):
+    dest_addr = args[0]
+
+    print(args, kwargs)
+
+    print(f"--- {dest_addr} ping statistics ---")
+
 def send_echo(dest_addr: str):
 
     # VERIFY IDS AND SEQUENCE NUMBER
@@ -72,27 +76,32 @@ def send_echo(dest_addr: str):
     print(f"PING {dest_addr} ({host}) {len(packet)}({len(packet) + 20}) bytes of data.")
 
     icmp_seq = 1
+
     while True:
-        time_start = time.time()
+        try:
+            time_start = time.time()
 
-        raw_socket.sendto(packet, (host, 1))
+            raw_socket.sendto(packet, (host, 1))
 
-        recv_packet, addr = raw_socket.recvfrom(__BUFFER_SIZE__)
+            recv_packet, addr = raw_socket.recvfrom(__BUFFER_SIZE__)
+                
+            icmp_header = recv_packet[20:28] # because of ipv4 header (20 bytes)
+
+            fields = struct.unpack("!BBHHH", icmp_header)
             
-        icmp_header = recv_packet[20:28] # because of ipv4 header (20 bytes)
+            elapsed_time = time.time() - time_start
 
-        fields = struct.unpack(STRUCT_FORMAT, icmp_header)
-        
-        elapsed_time = time.time() - time_start
+            print(f"recv {fields}")
+            print(addr)
 
-        print(f"recv {fields}")
-        print(addr)
+            print(f"{len(recv_packet)} bytes from {dest_addr} ({host}): icmp_seq={icmp_seq} time={round(elapsed_time * 1000, 2)} ms")
+            time.sleep(2)
+            icmp_seq = icmp_seq + 1
 
-        print(f"{len(recv_packet)} bytes from {dest_addr} ({host}): icmp_seq={icmp_seq} time={round(elapsed_time * 1000, 2)} ms")
-        time.sleep(2)
-        icmp_seq = icmp_seq + 1
-
-    raw_socket.close()
+        except KeyboardInterrupt:
+            raw_socket.close()
+            echo_statistics(dest_addr, icmp_seq)
+            return
 
 def reply_echo():
     # EVERYTHING
