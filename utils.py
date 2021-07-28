@@ -88,7 +88,7 @@ def send_echo(dest_addr: str):
         print(f"recv {fields}")
         print(addr)
 
-        print(f"bytes from {dest_addr} ({host}): icmp_seq={icmp_seq} time={round(elapsed_time * 1000, 2)} ms")
+        print(f"{len(recv_packet)} bytes from {dest_addr} ({host}): icmp_seq={icmp_seq} time={round(elapsed_time * 1000, 2)} ms")
         time.sleep(2)
         icmp_seq = icmp_seq + 1
 
