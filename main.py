@@ -4,7 +4,10 @@ from cli_arguments import get_args
 
 args = get_args()
 
-send_echo(args.destination)
+if args.version:
+    print("Version 0.0.2alpha")
+else:
+    send_echo(args.destination, verbose=args.verbose)
 
 """ header = struct.pack("!BBHHB", ICMP_ECHO, CODE, 0, IDENTIFIER, 1)
 data = 192 * 'Q'
