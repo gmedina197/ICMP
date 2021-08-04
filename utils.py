@@ -4,8 +4,7 @@ import array
 import time
 import select
 import statistics
-
-#from sys import getsizeof
+import random
 
 ICMP_CODE = socket.getprotobyname('icmp')
 
@@ -40,12 +39,13 @@ def checksum(packet: bytes) -> int:
 
 def create_packet(id: int = 0, seq_number: int = 0) -> bytes:
     #! network (= big-endian)
-    # B unsigned char (8 bits)
-    # H unsigned short (16 bits)
+    # B unsigned char (8 bits) 1 byte
+    # H unsigned short (16 bits) 2 bytes
+    # s char[] n bytes
     
     data = b"pong:)" # dummy data
 
-    header = struct.pack("!BBHHH6s", ICMP_ECHO, CODE, 0, id, seq_number, data)
+    header = struct.pack("!BBHHH6s", ICMP_ECHO, CODE, 0x0000, id, seq_number, data)
 
     check = checksum(header)
 
@@ -60,13 +60,21 @@ def echo_statistics(dest_addr: str, icmp_seq: int, received: int, total_time, ti
     print(f"--- {dest_addr} ping statistics ---")
     print(f"{icmp_seq} packets transmitted, {received} received, {round(package_loss)}% packet_loss, {round(total_time * 1000, 2)}ms")
 
-    print(f"rtt min/avg/max/mdev = {min(times)}/{round(statistics.mean(times), 3)}/{max(times)}/{round(statistics.stdev(times), 3)} ms")
+    print(f"rtt min/avg/max/mdev = {min(times)}/{round(statistics.mean(times), 2)}/{max(times)}/{round(statistics.stdev(times), 2)} ms")
+
+def validate_checksum(icmp_header: bytes):
+
+    format = f"!BBHHH{len(icmp_header) - 8}s"
+    message_type, code, chcksum, icmp_id, seq, data = struct.unpack(format, icmp_header)
+    
+    header = struct.pack(format, message_type, code, 0x00, icmp_id, seq, data)
+
+    check = checksum(header)
+
+    return check == socket.htons(chcksum), icmp_id, seq
 
 def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
-
     # VERIFY IDS AND SEQUENCE NUMBER
-    # CALC RTT
-    # PACKAGE LOSS
 
     raw_socket = create_raw_socket()
 
@@ -84,39 +92,46 @@ def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
 
     times = []
     total_time = time.time()
+
+    id = random.getrandbits(16)
+
     while True:
         try:
 
             time_start = time.time()
-
-            #id = random.getrandbits(16)
                         
-            packet = create_packet(seq_number=icmp_seq)
+            packet = create_packet(id=id, seq_number=icmp_seq)
 
             raw_socket.sendto(packet, (host, 1))
 
-            icmp_seq = icmp_seq + 1
 
             not_timeout = select.select([raw_socket], [], [], timeout)
 
             if not_timeout[0]:
                 recv_packet, addr = raw_socket.recvfrom(__BUFFER_SIZE__) #only move foward if package is received
-                received = received + 1
 
-                a,b,c,d = struct.unpack("!BBBB", recv_packet[12:16])
-
-                source_addr = socket.gethostbyaddr(f"{a}.{b}.{c}.{d}")
-
-                icmp_header = recv_packet[20:28] #because of ipv4 header (20 bytes)
-                
-                message_type, code, chcksum, icmp_id, seq = struct.unpack("!BBHHH", icmp_header)
-                
+                # RTT
                 elapsed_time = time.time() - time_start
 
                 formatted_time = round(elapsed_time * 1000, 2)
                 times.append(formatted_time)
+                ########
 
-                print(f"{len(recv_packet)} bytes from {source_addr} ({host}): icmp_seq={icmp_seq} time={formatted_time}ms")
+                ### Validation and output
+                a, b, c, d = struct.unpack("!BBBB", recv_packet[12:16])
+
+                source_addr = socket.gethostbyaddr(f"{a}.{b}.{c}.{d}")
+
+                icmp_header = recv_packet[20:] #because of ipv4 header (20 bytes)
+
+                is_valid, r_id, r_seq = validate_checksum(icmp_header)
+
+                if is_valid and r_id == id and r_seq == icmp_seq:
+                    received = received + 1
+                    print(f"{len(recv_packet)} bytes from {source_addr[0]} ({host}): icmp_seq={icmp_seq} time={formatted_time}ms")
+
+                icmp_seq = icmp_seq + 1
+            
             elif verbose:
                 print(f"({host}): icmp_seq={icmp_seq} timed out after 2000ms")
 
@@ -126,7 +141,3 @@ def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
             raw_socket.close()
             echo_statistics(dest_addr, icmp_seq, received, time.time() - total_time, times)
             return
-
-def reply_echo():
-    # EVERYTHING
-    pass
