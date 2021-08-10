@@ -38,20 +38,30 @@ def checksum(packet: bytes) -> int:
     return (~res) & 0xffff  # compliment
 
 def create_packet(id: int = 0, seq_number: int = 0) -> bytes:
-    #! network (= big-endian)
     # B unsigned char (8 bits) 1 byte
     # H unsigned short (16 bits) 2 bytes
     # s char[] n bytes
     
     data = b"pong:)" # dummy data
 
-    header = struct.pack("!BBHHH6s", ICMP_ECHO, CODE, 0x0000, id, seq_number, data)
+    header = struct.pack("BBHHH6s", ICMP_ECHO, CODE, 0x0000, id, seq_number, data)
 
     check = checksum(header)
 
-    header = struct.pack("!BBHHH6s", ICMP_ECHO, CODE, socket.htons(check), id, seq_number, data)
+    header = struct.pack("BBHHH6s", ICMP_ECHO, CODE, check, id, seq_number, data)
 
     return header
+
+def validate_checksum(icmp_header: bytes):
+
+    format = f"BBHHH{len(icmp_header) - 8}s"
+    message_type, code, chcksum, icmp_id, seq, data = struct.unpack(format, icmp_header)
+    
+    header = struct.pack(format, message_type, code, 0x00, icmp_id, seq, data)
+
+    check = checksum(header)
+
+    return check == chcksum, icmp_id, seq
 
 def echo_statistics(dest_addr: str, icmp_seq: int, received: int, total_time, times: list):
     package_loss = (100 / icmp_seq) * (icmp_seq - received)
@@ -62,26 +72,14 @@ def echo_statistics(dest_addr: str, icmp_seq: int, received: int, total_time, ti
 
     print(f"rtt min/avg/max/mdev = {min(times)}/{round(statistics.mean(times), 2)}/{max(times)}/{round(statistics.stdev(times), 2)} ms")
 
-def validate_checksum(icmp_header: bytes):
-
-    format = f"!BBHHH{len(icmp_header) - 8}s"
-    message_type, code, chcksum, icmp_id, seq, data = struct.unpack(format, icmp_header)
-    
-    header = struct.pack(format, message_type, code, 0x00, icmp_id, seq, data)
-
-    check = checksum(header)
-
-    return check == socket.htons(chcksum), icmp_id, seq
-
 def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
-    # VERIFY IDS AND SEQUENCE NUMBER
-
     raw_socket = create_raw_socket()
 
     try:
         host = socket.gethostbyname(dest_addr)
     except socket.gaierror as e:
-        return
+        print("Cannot found a valid hostname for that.")
+        return 
 
     packet = create_packet()
 
@@ -104,7 +102,6 @@ def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
 
             raw_socket.sendto(packet, (host, 1))
 
-
             not_timeout = select.select([raw_socket], [], [], timeout)
 
             if not_timeout[0]:
@@ -118,7 +115,7 @@ def send_echo(dest_addr: str, timeout: float = 2, verbose: bool = False):
                 ########
 
                 ### Validation and output
-                a, b, c, d = struct.unpack("!BBBB", recv_packet[12:16])
+                a, b, c, d = struct.unpack("BBBB", recv_packet[12:16])
 
                 source_addr = socket.gethostbyaddr(f"{a}.{b}.{c}.{d}")
 

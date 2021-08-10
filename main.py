@@ -6,14 +6,8 @@ args = get_args()
 
 if args.version:
     print("Version 0.0.2alpha")
-else:
+elif args.destination:
     send_echo(args.destination, verbose=args.verbose)
-
-""" header = struct.pack("!BBHHB", ICMP_ECHO, CODE, 0, IDENTIFIER, 1)
-data = 192 * 'Q'
-
-check = checksum(header + bytes(data, "utf-8"))
-print(hex(check)) """
-
-#data = map(lambda x: int(x, 16), data)
-#data = struct.pack("%dB" % size, *data)
+else:
+    print("Required to pass a destination")
+    print("e.g. main.py -d unioeste.br")
