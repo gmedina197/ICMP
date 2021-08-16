@@ -1,4 +1,3 @@
-import struct
 from utils import send_echo
 from cli_arguments import get_args
 
